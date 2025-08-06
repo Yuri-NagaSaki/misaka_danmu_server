@@ -1,35 +1,31 @@
-# 使用官方 Python 镜像作为基础镜像
-FROM python:3.10-slim
+# 使用Python 3.11官方镜像作为基础镜像
+FROM python:3.11-slim
 
-# 设置环境变量，防止生成 .pyc 文件并启用无缓冲输出
-# 设置时区为亚洲/上海，以确保日志等时间正确显示
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV TZ=Asia/Shanghai
-# 设置容器的区域设置为 UTF-8。
-# 这是解决 protobuf C++ 后端在某些精简版 Linux 环境中出现编码问题的关键。
-# 它能确保底层库正确处理 UTF-8 字符串，从而修复 'invalid UTF-8 data' 或 'Couldn't parse file content!' 错误。
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
+# 设置环境变量
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 
 # 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖和 uv
-# build-essential 用于编译某些 Python 包 (如 cryptography)
-# default-libmysqlclient-dev 是 aiomysql 所需的
-# curl 用于安装 uv
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    default-libmysqlclient-dev \
-    tzdata \
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
     curl \
-    && apt-get clean \
+    default-libmysqlclient-dev \
+    libpq-dev \
+    pkg-config \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+# 安装UV包管理器
+RUN pip install uv
 
 # 为用户和组ID设置构建参数
 ARG PUID=1000
@@ -39,22 +35,33 @@ ARG PGID=1000
 RUN groupadd -g ${PGID} appgroup && \
     useradd -u ${PUID} -g appgroup -s /bin/sh -m appuser
 
-# 复制项目文件并安装依赖
+# 复制项目依赖文件
 COPY pyproject.toml uv.lock* ./
-RUN uv sync --frozen --no-dev
 
-# 复制应用代码
-COPY . .
+# 安装Python依赖
+RUN uv sync --frozen
 
-# 更改应用目录的所有权
-RUN chown -R appuser:appgroup /app
+# 复制项目源代码
+COPY src/ ./src/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
+COPY config/ ./config/
+COPY static/ ./static/
 
-# 切换到非 root 用户
+# 创建必要目录并设置权限
+RUN mkdir -p logs data && \
+    chown -R appuser:appgroup /app && \
+    chmod -R 755 /app
+
+# 切换到非root用户
 USER appuser
 
-# 暴露应用运行的端口
+# 暴露端口
 EXPOSE 7768
 
-# 运行应用的命令
-# 使用 uv 运行应用
-CMD ["uv", "run", "python", "-m", "src.main"]
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:7768/health || exit 1
+
+# 启动命令
+CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "7768"]
