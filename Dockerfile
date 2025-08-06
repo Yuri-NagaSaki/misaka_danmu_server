@@ -15,15 +15,21 @@ ENV LC_ALL C.UTF-8
 # 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖
+# 安装系统依赖和 uv
 # build-essential 用于编译某些 Python 包 (如 cryptography)
 # default-libmysqlclient-dev 是 aiomysql 所需的
+# curl 用于安装 uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     default-libmysqlclient-dev \
     tzdata \
+    curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# 安装 uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # 为用户和组ID设置构建参数
 ARG PUID=1000
@@ -33,9 +39,9 @@ ARG PGID=1000
 RUN groupadd -g ${PGID} appgroup && \
     useradd -u ${PUID} -g appgroup -s /bin/sh -m appuser
 
-# 复制依赖文件并安装
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 复制项目文件并安装依赖
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --frozen --no-dev
 
 # 复制应用代码
 COPY . .
@@ -50,5 +56,5 @@ USER appuser
 EXPOSE 7768
 
 # 运行应用的命令
-# host 在 docker-compose.yml 中通过环境变量设置为 0.0.0.0
-CMD ["python", "-m", "src.main"]
+# 使用 uv 运行应用
+CMD ["uv", "run", "python", "-m", "src.main"]
