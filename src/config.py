@@ -11,11 +11,70 @@ class ServerConfig(BaseModel):
     port: int = 7768
 
 class DatabaseConfig(BaseModel):
+    # 数据库类型：mysql, postgresql, sqlite
+    type: str = "mysql"
     host: str = "127.0.0.1"
     port: int = 3306
     user: str = "root"
     password: str = "password"
     name: str = "danmaku_db"
+    
+    # SQLAlchemy 引擎配置
+    echo: bool = False              # 是否输出SQL日志
+    pool_size: int = 10            # 连接池大小
+    max_overflow: int = 20         # 最大溢出连接
+    pool_timeout: int = 30         # 获取连接超时（秒）
+    pool_recycle: int = 3600       # 连接回收时间（秒）
+    
+    @property
+    def async_url(self) -> str:
+        """构建异步数据库URL"""
+        if self.type == "mysql":
+            return f"mysql+aiomysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}?charset=utf8mb4"
+        elif self.type == "postgresql":
+            return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        elif self.type == "sqlite":
+            # SQLite 不需要用户名密码和主机
+            return f"sqlite+aiosqlite:///{self.name}.db"
+        else:
+            raise ValueError(f"不支持的数据库类型: {self.type}")
+    
+    @property
+    def sync_url(self) -> str:
+        """构建同步数据库URL（用于Alembic迁移）"""
+        if self.type == "mysql":
+            return f"mysql+pymysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}?charset=utf8mb4"
+        elif self.type == "postgresql":
+            return f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        elif self.type == "sqlite":
+            return f"sqlite:///{self.name}.db"
+        else:
+            raise ValueError(f"不支持的数据库类型: {self.type}")
+    
+    def get_engine_config(self) -> Dict[str, Any]:
+        """获取SQLAlchemy引擎配置"""
+        config = {
+            "echo": self.echo,
+            "pool_pre_ping": True,
+            "pool_recycle": self.pool_recycle,
+        }
+        
+        if self.type == "sqlite":
+            # SQLite 特殊配置
+            from sqlalchemy.pool import NullPool
+            config.update({
+                "poolclass": NullPool,
+                "connect_args": {"check_same_thread": False},
+            })
+        else:
+            # MySQL/PostgreSQL 异步配置 - 不指定poolclass让SQLAlchemy自动选择
+            config.update({
+                "pool_size": self.pool_size,
+                "max_overflow": self.max_overflow,
+                "pool_timeout": self.pool_timeout,
+            })
+        
+        return config
 
 class JWTConfig(BaseModel):
     secret_key: str = "a_very_secret_key_that_should_be_changed"

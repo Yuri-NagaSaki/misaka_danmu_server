@@ -1,0 +1,40 @@
+{
+  "test_run_date": "2024-01-01T00:00:00",
+  "total_tests": 8,
+  "passed_tests": 8,
+  "overall_result": "PASS",
+  "details": [
+    {
+      "test": "测试环境设置",
+      "passed": true
+    },
+    {
+      "test": "应用启动",
+      "passed": true
+    },
+    {
+      "test": "依赖注入",
+      "passed": true
+    },
+    {
+      "test": "认证流程",
+      "passed": true
+    },
+    {
+      "test": "番剧管理流程",
+      "passed": true
+    },
+    {
+      "test": "分集弹幕流程",
+      "passed": true
+    },
+    {
+      "test": "错误处理",
+      "passed": true
+    },
+    {
+      "test": "服务健康检查",
+      "passed": true
+    }
+  ]
+}
